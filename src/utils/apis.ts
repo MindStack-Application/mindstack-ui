@@ -52,7 +52,7 @@ class ApiClient {
 
   // Auth methods
   async login(email: string, password: string) {
-    const res = await this.request<{ token?: string; [k: string]: any }>(
+    const res = await this.request<{ token?: string;[k: string]: any }>(
       '/auth/login',
       {
         method: 'POST',
@@ -204,6 +204,92 @@ class ApiClient {
   async uncompleteSubtopic(subtopicId: string) {
     return this.request(`/roadmap/subtopics/${subtopicId}/uncomplete`, {
       method: 'PUT'
+    });
+  }
+
+  // Graph methods
+  async getGraph() {
+    return this.request('/graph');
+  }
+
+  async getNodes(options?: { search?: string; type?: string; limit?: number; offset?: number }) {
+    const params = new URLSearchParams();
+    if (options?.search) params.append('search', options.search);
+    if (options?.type) params.append('type', options.type);
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.offset) params.append('offset', options.offset.toString());
+
+    const queryString = params.toString();
+    return this.request(`/graph/nodes${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async createNode(nodeData: any) {
+    return this.request('/graph/nodes', {
+      method: 'POST',
+      body: JSON.stringify(nodeData)
+    });
+  }
+
+  async updateNode(nodeId: number, nodeData: any) {
+    return this.request(`/graph/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(nodeData)
+    });
+  }
+
+  async deleteNode(nodeId: number) {
+    return this.request(`/graph/nodes/${nodeId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async createEdge(edgeData: any) {
+    return this.request('/graph/edges', {
+      method: 'POST',
+      body: JSON.stringify(edgeData)
+    });
+  }
+
+  async deleteEdge(edgeId: number) {
+    return this.request(`/graph/edges/${edgeId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async postReview(reviewData: any) {
+    return this.request('/graph/reviews', {
+      method: 'POST',
+      body: JSON.stringify(reviewData)
+    });
+  }
+
+  async getRevisionQueue(options?: { horizonDays?: number; limit?: number }) {
+    const params = new URLSearchParams();
+    if (options?.horizonDays) params.append('horizonDays', options.horizonDays.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+
+    const queryString = params.toString();
+    return this.request(`/graph/revision-queue${queryString ? `?${queryString}` : ''}`);
+  }
+
+  // Learning handshake methods
+  async createLearningItemFromNode(nodeId: number, user: { id: string | undefined }) {
+    return this.request(`/learning/users/${user.id}/learning-items`, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: `Learn: ${nodeId}`, // This will be updated by the backend
+        type: 'other',
+        category: 'MindGraph',
+        nodeId: nodeId,
+        status: 'in-progress',
+        progress: 0
+      })
+    });
+  }
+
+  async seedGraphData() {
+    return this.request('/graph/seed', {
+      method: 'POST'
     });
   }
 }

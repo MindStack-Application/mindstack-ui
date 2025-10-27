@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, List, BarChart3, RotateCcw, BookOpen, Map, Brain, TrendingUp, Activity } from 'lucide-react';
+import { LayoutDashboard, List, BarChart3, RotateCcw, BookOpen, Map, Brain, TrendingUp, Activity, Network } from 'lucide-react';
 import ProfileIcon from './ProfileIcon';
 
 interface HeaderProps {
@@ -15,6 +15,7 @@ const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onSettingsClick
     { id: 'learning', label: 'Learning', icon: BookOpen },
     { id: 'revision', label: 'Revision', icon: RotateCcw },
     { id: 'roadmaps', label: 'Roadmaps', icon: Map },
+    { id: 'mindgraph', label: 'MindGraph', icon: Network },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
   ];
 

@@ -8,6 +8,7 @@ import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import Settings from './components/Settings';
 import OAuthCallback from './components/OAuthCallback';
+import GraphViewer from './components/MindGraph/GraphViewer';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -43,6 +44,11 @@ function App() {
             <Route path="/settings" element={
               <ProtectedRoute>
                 <Settings onBack={() => window.history.back()} />
+              </ProtectedRoute>
+            } />
+            <Route path="/mindgraph/:graphId" element={
+              <ProtectedRoute>
+                <GraphViewer />
               </ProtectedRoute>
             } />
             {/* Add more routes as needed */}

@@ -7,6 +7,7 @@ import Learning from './Learning';
 import Revision from './Revision';
 import Roadmaps from './Roadmaps';
 import AdvancedAnalytics from './AdvancedAnalytics';
+import MindGraph from './MindGraph';
 import type { Problem, LearningItem, RevisionItem, Roadmap } from '../types';
 import { apiClient } from '../utils/apis';
 import { AuthContext } from './AuthContext';
@@ -269,6 +270,12 @@ export const Dashboard: React.FC = () => {
                 {activeTab === 'roadmaps' && (
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden p-6">
                         <Roadmaps activeTab={activeTab} onTabChange={setActiveTab} />
+                    </div>
+                )}
+
+                {activeTab === 'mindgraph' && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                        <MindGraph />
                     </div>
                 )}
 

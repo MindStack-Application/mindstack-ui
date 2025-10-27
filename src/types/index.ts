@@ -195,3 +195,6 @@ export interface RoadmapProgress {
   completedSubtopics: number;
   overallProgress: number;
 }
+
+// Export graph types
+export * from './graph';

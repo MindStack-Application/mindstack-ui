@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, Clock, AlertCircle, TrendingUp, Target, RotateCcw, BookOpen, Code, ExternalLink } from 'lucide-react';
-import type { Problem, LearningItem, RevisionItem, RevisionAgenda, RevisionStats } from '../types';
+import { Calendar, CheckCircle, Clock, AlertCircle, TrendingUp, Target, RotateCcw, BookOpen, Code, ExternalLink, Network } from 'lucide-react';
+import type { Problem, LearningItem, RevisionItem, RevisionAgenda, RevisionStats, GraphNode } from '../types';
 import { apiClient } from '../utils/apis';
 import { AuthContext } from './AuthContext';
+import { useGraphMetrics } from '../hooks/useGraphData';
 import {
     createRevisionItemFromProblem,
     createRevisionItemFromLearning,
@@ -31,6 +32,18 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
         currentStreak: 0,
     });
     const { user } = React.useContext(AuthContext);
+
+    // MindGraph revision queue
+    const {
+        revisionQueue,
+        loading: graphLoading,
+        fetchRevisionQueue,
+        getNodePriority,
+        formatStrength,
+        formatDaysUntilDue,
+        getStatusColor,
+        getStatusIcon
+    } = useGraphMetrics();
 
     // Load revision items from backend
     const loadRevisionItems = async () => {
@@ -87,8 +100,32 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
         );
     };
 
+    // Load MindGraph revision queue
+    const loadGraphRevisionQueue = async () => {
+        if (!user?.id) return;
+        await fetchRevisionQueue({ horizonDays: 14, limit: 100 });
+    };
+
+    // Handle MindGraph node review
+    const handleNodeReview = async (nodeId: number, rating: number) => {
+        try {
+            const response = await apiClient.postReview({ nodeId, rating });
+            if (response.success) {
+                // Refresh the revision queue
+                await loadGraphRevisionQueue();
+                alert(`Review posted successfully! Rating: ${rating}/5`);
+            } else {
+                alert('Failed to post review');
+            }
+        } catch (error) {
+            console.error('Error posting review:', error);
+            alert('Error posting review');
+        }
+    };
+
     useEffect(() => {
         loadRevisionItems();
+        loadGraphRevisionQueue();
     }, [user?.id]);
 
     if (activeTab !== 'revision') {
@@ -325,6 +362,96 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
                     </div>
                 </div>
             )}
+
+            {/* MindGraph Revision Queue */}
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <Network className="h-5 w-5 text-gray-600" />
+                        MindGraph Revision Queue
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                        Knowledge nodes that need review based on spaced repetition
+                    </p>
+                </div>
+
+                <div className="p-6">
+                    {graphLoading ? (
+                        <div className="text-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p className="text-gray-600">Loading revision queue...</p>
+                        </div>
+                    ) : revisionQueue.length === 0 ? (
+                        <div className="text-center py-8">
+                            <Network className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">No nodes need review</h3>
+                            <p className="text-gray-600">
+                                All your knowledge nodes are up to date!
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {revisionQueue
+                                .sort((a, b) => getNodePriority(b) - getNodePriority(a))
+                                .slice(0, 10)
+                                .map((node) => {
+                                    const status = node.metric?.status || 'ok';
+                                    const strength = node.metric?.strength || 0.5;
+                                    const dueDate = node.metric?.dueDate ? new Date(node.metric.dueDate) : null;
+
+                                    return (
+                                        <div key={node.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <h3 className="font-medium text-gray-900">{node.title}</h3>
+                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(status)}`}>
+                                                            {status} {getStatusIcon(status)}
+                                                        </span>
+                                                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                                            {node.type}
+                                                        </span>
+                                                    </div>
+
+                                                    {node.description && (
+                                                        <p className="text-sm text-gray-600 mb-2">{node.description}</p>
+                                                    )}
+
+                                                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                                                        <span>Strength: <span className="font-medium">{formatStrength(strength)}</span></span>
+                                                        {dueDate && (
+                                                            <span>Due: <span className="font-medium">{formatDaysUntilDue(dueDate)}</span></span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 ml-4">
+                                                    <div className="flex items-center gap-1">
+                                                        {[1, 2, 3, 4, 5].map((rating) => (
+                                                            <button
+                                                                key={rating}
+                                                                onClick={() => handleNodeReview(node.id, rating)}
+                                                                className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                                                            >
+                                                                {rating}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => onTabChange('mindgraph')}
+                                                        className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                                    >
+                                                        View in Graph
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
