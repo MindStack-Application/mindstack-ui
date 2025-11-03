@@ -115,7 +115,7 @@ const RecentActivity: React.FC<RecentActivityProps> = ({ problems, learningItems
                 )}
                 {unified.map(activity => (
                     <div
-                        key={activity.id}
+                        key={`${activity.type}-${activity.id}`}
                         className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
                     >
                         <div className="flex-shrink-0 mt-1">

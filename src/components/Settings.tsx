@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, User, Bell, Shield, Palette, Database, Upload, X, Camera } from 'lucide-react';
+import { ArrowLeft, User, Bell, Shield, Palette, Database, Upload, X, Camera, Flag } from 'lucide-react';
 import { AuthContext } from './AuthContext';
+import { useFeatureFlags } from './FeatureFlagsContext';
 import { AVATARS, getAvatarById, getDefaultAvatar } from '../utils/avatars';
 
 interface SettingsProps {
@@ -14,6 +15,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const [showAvatarGrid, setShowAvatarGrid] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { user } = React.useContext(AuthContext);
+    const { flags, updateFlag } = useFeatureFlags();
 
     // Handle file upload
     const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,6 +57,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         { id: 'notifications', label: 'Notifications', icon: Bell },
         { id: 'privacy', label: 'Privacy & Security', icon: Shield },
         { id: 'appearance', label: 'Appearance', icon: Palette },
+        { id: 'features', label: 'Feature Flags', icon: Flag },
         { id: 'data', label: 'Data & Storage', icon: Database },
     ];
 
@@ -282,6 +285,42 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                                     <option>Spanish</option>
                                     <option>French</option>
                                 </select>
+                            </div>
+                        </div>
+                    </div>
+                );
+            case 'features':
+                return (
+                    <div className="space-y-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Feature Flags</h3>
+                        <p className="text-sm text-gray-600 mb-6">
+                            Enable or disable experimental features. Changes take effect immediately.
+                        </p>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                                <div>
+                                    <h4 className="font-medium text-gray-900">Roadmaps Feature</h4>
+                                    <p className="text-sm text-gray-600">
+                                        Enable the learning roadmaps functionality (currently in development)
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={flags.roadmaps}
+                                        onChange={(e) => updateFlag('roadmaps', e.target.checked)}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+
+                            {/* Placeholder for future feature flags */}
+                            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                <h4 className="font-medium text-gray-700 mb-2">More features coming soon...</h4>
+                                <p className="text-sm text-gray-600">
+                                    Additional experimental features will appear here as they become available.
+                                </p>
                             </div>
                         </div>
                     </div>

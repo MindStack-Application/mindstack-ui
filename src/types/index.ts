@@ -126,6 +126,7 @@ export interface RevisionItem {
   revisionCycle: number; // 1, 2, 3, 4 (3, 7, 15, 30 days)
   isCompleted: boolean;
   completedDate?: string;
+  linkedNodes?: Array<{ id: number; title: string; type: string }>;
 }
 
 export interface RevisionAgenda {
@@ -195,3 +196,18 @@ export interface RoadmapProgress {
   completedSubtopics: number;
   overallProgress: number;
 }
+
+// Export graph types
+export {
+  GraphNode,
+  GraphEdge,
+  NodeMetric,
+  Review,
+  GraphData,
+  CreateNodeData,
+  UpdateNodeData,
+  CreateEdgeData,
+  PostReviewData,
+  RevisionQueueOptions,
+  GraphSettings
+} from './graph';
