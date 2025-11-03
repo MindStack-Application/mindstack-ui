@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:7007/api';
+const API_BASE_URL = import.meta.env.PROD ? '/api' : 'https://mindstack-api.onrender.com/api';
 
 class ApiClient {
   private baseUrl: string;
