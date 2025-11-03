@@ -61,6 +61,7 @@ export const createRevisionItemFromLearning = (learningItem: LearningItem): Revi
 /**
  * Get revision items for a specific date
  */
+// Get revision items for a specific date (exact match for upcoming view)
 export const getRevisionItemsForDate = (revisionItems: RevisionItem[], targetDate: string): RevisionItem[] => {
     return revisionItems.filter(item =>
         item.nextRevisionDate === targetDate && !item.isCompleted

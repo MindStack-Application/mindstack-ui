@@ -124,3 +124,12 @@ body {
 .notification-progress-info::after {
   background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
+
+/* Fast hover transitions for toolbar and controls */
+.toolbar-button {
+  transition: background-color 0.05s ease-in-out, color 0.05s ease-in-out, box-shadow 0.05s ease-in-out;
+}
+
+.toolbar-button:hover {
+  transition: background-color 0.05s ease-in-out, color 0.05s ease-in-out, box-shadow 0.05s ease-in-out;
+}

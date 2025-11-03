@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, CheckCircle, Calendar, Flame, Target } from 'lucide-react';
+import { FileText, Plus, CheckCircle, Calendar, Flame, Target, Link, AlertCircle } from 'lucide-react';
 import ProblemsTable from './ProblemsTable';
-import AddProblemForm from './AddProblemForm';
+import AddProblemFormStepper from './AddProblemFormStepper';
+import LinkToGraphSidePanel from './LinkToGraphSidePanel';
 import type { Problem, NewProblemForm } from '../types';
 import { apiClient } from '../utils/apis';
 import { AuthContext } from './AuthContext';
@@ -24,6 +25,15 @@ const Problems: React.FC<ProblemsProps> = ({ activeTab, onTabChange }) => {
     rateChange: 0,
   });
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
+  const [linkSidePanel, setLinkSidePanel] = useState<{
+    isOpen: boolean;
+    itemId: number;
+    itemTitle: string;
+  }>({
+    isOpen: false,
+    itemId: 0,
+    itemTitle: ''
+  });
   const { user } = React.useContext(AuthContext);
 
   const handleAddProblem = (formData: NewProblemForm) => {
@@ -51,6 +61,27 @@ const Problems: React.FC<ProblemsProps> = ({ activeTab, onTabChange }) => {
     loadProblems(); // Refresh the problems list from backend
     loadAnalytics(); // Refresh analytics data
     setShowAddForm(false);
+  };
+
+  const handleOpenLinkPanel = (problemId: number, problemTitle: string) => {
+    setLinkSidePanel({
+      isOpen: true,
+      itemId: problemId,
+      itemTitle: problemTitle
+    });
+  };
+
+  const handleCloseLinkPanel = () => {
+    setLinkSidePanel({
+      isOpen: false,
+      itemId: 0,
+      itemTitle: ''
+    });
+  };
+
+  const handleLinkSuccess = () => {
+    // Refresh the problems list to show updated link status
+    loadProblems();
   };
 
   const handleShowAddForm = () => {
@@ -172,11 +203,25 @@ const Problems: React.FC<ProblemsProps> = ({ activeTab, onTabChange }) => {
       <ProblemsTable
         problems={problems}
         onAddProblem={handleShowAddForm}
+        onOpenLinkPanel={handleOpenLinkPanel}
+      />
+
+      {/* Link to Graph Side Panel */}
+      <LinkToGraphSidePanel
+        isOpen={linkSidePanel.isOpen}
+        onClose={handleCloseLinkPanel}
+        itemId={linkSidePanel.itemId}
+        itemType="problem"
+        itemTitle={linkSidePanel.itemTitle}
+        onLinkSuccess={handleLinkSuccess}
       />
 
       <div>
         {showAddForm ? (
-          <AddProblemForm onSubmit={handleAddProblem} />
+          <AddProblemFormStepper
+            onSubmit={handleAddProblem}
+            onCancel={() => setShowAddForm(false)}
+          />
         ) : (
           <div className="bg-white border border-gray-200 rounded-md shadow-sm p-8 text-center">
             <div className="text-gray-400 mb-4">

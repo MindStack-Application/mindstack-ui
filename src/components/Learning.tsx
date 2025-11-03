@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Plus, Play, Pause, CheckCircle, Clock, Target, TrendingUp } from 'lucide-react';
+import { BookOpen, Plus, Play, Pause, CheckCircle, Clock, Target, TrendingUp, Link, AlertCircle, ExternalLink } from 'lucide-react';
 import type { LearningItem } from '../types';
 import { AuthContext } from './AuthContext';
 import { apiClient } from '../utils/apis';
+import LinkToGraphSidePanel from './LinkToGraphSidePanel';
+import AddLearningFormStepper from './AddLearningFormStepper';
 
 interface LearningProps {
     activeTab: string;
@@ -12,6 +14,16 @@ interface LearningProps {
 const Learning: React.FC<LearningProps> = ({ activeTab, onTabChange }) => {
     const [learningItems, setLearningItems] = useState<LearningItem[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
+    const [linkStatuses, setLinkStatuses] = useState<Record<number, boolean>>({});
+    const [linkSidePanel, setLinkSidePanel] = useState<{
+        isOpen: boolean;
+        itemId: number;
+        itemTitle: string;
+    }>({
+        isOpen: false,
+        itemId: 0,
+        itemTitle: ''
+    });
     const [formData, setFormData] = useState<Partial<LearningItem>>({
         title: '',
         type: 'course',
@@ -24,25 +36,17 @@ const Learning: React.FC<LearningProps> = ({ activeTab, onTabChange }) => {
         tags: '',
         notes: '',
         resourceLink: '',
-        isRevision: false,
+        isRevision: true,
         difficulty: 'beginner',
         platform: '',
     });
     const { user } = React.useContext(AuthContext);
 
-    const handleAddLearning = async () => {
-        if (!formData.title || !formData.category || !user?.id) return;
-
-        try {
-            const response = await apiClient.createLearningItem(formData, { id: user.id });
-            if (response.success) {
-                loadLearningItems(); // Refresh the list from backend
-                setShowAddForm(false);
-                resetForm();
-            }
-        } catch (error) {
-            console.error('Error creating learning item:', error);
-        }
+    const handleAddLearning = async (formData: any) => {
+        // The AddLearningForm handles the API call internally
+        // Just refresh the learning items list and link statuses
+        await loadLearningItems();
+        setShowAddForm(false);
     };
 
     const resetForm = () => {
@@ -58,10 +62,31 @@ const Learning: React.FC<LearningProps> = ({ activeTab, onTabChange }) => {
             tags: '',
             notes: '',
             resourceLink: '',
-            isRevision: false,
+            isRevision: true,
             difficulty: 'beginner',
             platform: '',
         });
+    };
+
+    const handleOpenLinkPanel = (itemId: number, itemTitle: string) => {
+        setLinkSidePanel({
+            isOpen: true,
+            itemId: itemId,
+            itemTitle: itemTitle
+        });
+    };
+
+    const handleCloseLinkPanel = () => {
+        setLinkSidePanel({
+            isOpen: false,
+            itemId: 0,
+            itemTitle: ''
+        });
+    };
+
+    const handleLinkSuccess = async () => {
+        // Refresh the learning items list to show updated link status
+        await loadLearningItems();
     };
 
     const handleShowAddForm = () => {
@@ -75,9 +100,30 @@ const Learning: React.FC<LearningProps> = ({ activeTab, onTabChange }) => {
             const response = await apiClient.getLearningItems(user.id);
             if (response.success) {
                 setLearningItems(response.data);
+                // Load link statuses for all items
+                loadLinkStatuses(response.data);
             }
         } catch (error) {
             console.error('Error loading learning items:', error);
+        }
+    };
+
+    const loadLinkStatuses = async (items: LearningItem[]) => {
+        try {
+            const statuses: Record<number, boolean> = {};
+
+            for (const item of items) {
+                try {
+                    const response = await apiClient.getItemLinks('learning', item.id);
+                    statuses[item.id] = response.success && response.data && response.data.length > 0;
+                } catch (error) {
+                    statuses[item.id] = false;
+                }
+            }
+
+            setLinkStatuses(statuses);
+        } catch (error) {
+            console.error('Error loading link statuses:', error);
         }
     };
 
@@ -265,6 +311,25 @@ const Learning: React.FC<LearningProps> = ({ activeTab, onTabChange }) => {
                                         </div>
 
                                         <div className="flex items-center gap-2 ml-4">
+                                            {/* Link Status Button - only show if not linked */}
+                                            {!linkStatuses[item.id] && (
+                                                <button
+                                                    onClick={() => handleOpenLinkPanel(item.id, item.title)}
+                                                    className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 hover:border-orange-300 transition-colors"
+                                                >
+                                                    <AlertCircle size={12} />
+                                                    Link Required
+                                                </button>
+                                            )}
+
+                                            {/* Show linked status if item is linked */}
+                                            {linkStatuses[item.id] && (
+                                                <div className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-600 bg-green-50 border border-green-200 rounded-md">
+                                                    <CheckCircle size={12} />
+                                                    Linked to Graph
+                                                </div>
+                                            )}
+
                                             {item.link && (
                                                 <a
                                                     href={item.link}
@@ -302,137 +367,21 @@ const Learning: React.FC<LearningProps> = ({ activeTab, onTabChange }) => {
 
             {/* Add Learning Form */}
             {showAddForm && (
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Learning Item</h3>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                            <input
-                                type="text"
-                                value={formData.title}
-                                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., React Fundamentals Course"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                            <select
-                                value={formData.type}
-                                onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as LearningItem['type'] }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="course">Course</option>
-                                <option value="book">Book</option>
-                                <option value="tutorial">Tutorial</option>
-                                <option value="article">Article</option>
-                                <option value="video">Video</option>
-                                <option value="podcast">Podcast</option>
-                                <option value="workshop">Workshop</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                            <input
-                                type="text"
-                                value={formData.category}
-                                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., Web Development"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Platform</label>
-                            <input
-                                type="text"
-                                value={formData.platform}
-                                onChange={(e) => setFormData(prev => ({ ...prev, platform: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., Coursera, YouTube"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty</label>
-                            <select
-                                value={formData.difficulty}
-                                onChange={(e) => setFormData(prev => ({ ...prev, difficulty: e.target.value as LearningItem['difficulty'] }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="beginner">Beginner</option>
-                                <option value="intermediate">Intermediate</option>
-                                <option value="advanced">Advanced</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Time Spent (minutes)</label>
-                            <input
-                                type="number"
-                                value={formData.timeSpent}
-                                onChange={(e) => setFormData(prev => ({ ...prev, timeSpent: parseInt(e.target.value) || 0 }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="60"
-                            />
-                        </div>
-
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                            <textarea
-                                value={formData.notes}
-                                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                rows={3}
-                                placeholder="Key takeaways, concepts learned..."
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Resource Link</label>
-                            <input
-                                type="url"
-                                value={formData.resourceLink}
-                                onChange={(e) => setFormData(prev => ({ ...prev, resourceLink: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="https://..."
-                            />
-                        </div>
-
-                        <div className="flex items-center">
-                            <input
-                                type="checkbox"
-                                id="isRevision"
-                                checked={formData.isRevision}
-                                onChange={(e) => setFormData(prev => ({ ...prev, isRevision: e.target.checked }))}
-                                className="mr-2"
-                            />
-                            <label htmlFor="isRevision" className="text-sm text-gray-700">
-                                Add to revision schedule
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-2 mt-4">
-                        <button
-                            onClick={handleAddLearning}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
-                        >
-                            Add Learning Item
-                        </button>
-                        <button
-                            onClick={() => setShowAddForm(false)}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
+                <AddLearningFormStepper
+                    onSubmit={handleAddLearning}
+                    onCancel={() => setShowAddForm(false)}
+                />
             )}
+
+            {/* Link to Graph Side Panel */}
+            <LinkToGraphSidePanel
+                isOpen={linkSidePanel.isOpen}
+                onClose={handleCloseLinkPanel}
+                itemId={linkSidePanel.itemId}
+                itemType="learning"
+                itemTitle={linkSidePanel.itemTitle}
+                onLinkSuccess={handleLinkSuccess}
+            />
         </div>
     );
 };

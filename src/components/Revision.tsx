@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, Clock, AlertCircle, TrendingUp, Target, RotateCcw, BookOpen, Code, ExternalLink, Network } from 'lucide-react';
-import type { Problem, LearningItem, RevisionItem, RevisionAgenda, RevisionStats, GraphNode } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Calendar, CheckCircle, Clock, AlertCircle, TrendingUp, Target, RotateCcw, BookOpen, Code, ExternalLink, Network, Star, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { Problem, LearningItem, RevisionItem, RevisionAgenda, RevisionStats } from '../types';
+import type { GraphNode } from '../types/graph';
 import { apiClient } from '../utils/apis';
 import { AuthContext } from './AuthContext';
 import { useGraphMetrics } from '../hooks/useGraphData';
+import { useNotification } from './NotificationContext';
+import { handleApiError } from '../utils/notificationService';
 import {
     createRevisionItemFromProblem,
     createRevisionItemFromLearning,
@@ -13,6 +16,9 @@ import {
     getRelativeDateDescription,
     completeRevisionItem
 } from '../utils/revisionUtils';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { QK } from '../state/queryKeys';
+import { format } from 'date-fns';
 
 interface RevisionProps {
     activeTab: string;
@@ -24,6 +30,9 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [agenda, setAgenda] = useState<RevisionAgenda[]>([]);
     const [completingItems, setCompletingItems] = useState<Set<string>>(new Set());
+    const [loadingRevisionItems, setLoadingRevisionItems] = useState(false);
+    const [showRatingModal, setShowRatingModal] = useState(false);
+    const [selectedRevisionItem, setSelectedRevisionItem] = useState<RevisionItem | null>(null);
     const [stats, setStats] = useState<RevisionStats>({
         totalRevisions: 0,
         completedRevisions: 0,
@@ -32,6 +41,8 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
         currentStreak: 0,
     });
     const { user } = React.useContext(AuthContext);
+    const { showSuccess, showError, showWarning } = useNotification();
+    const mountedRef = useRef(true);
 
     // MindGraph revision queue
     const {
@@ -39,25 +50,26 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
         loading: graphLoading,
         fetchRevisionQueue,
         getNodePriority,
-        formatStrength,
+        getStrengthContextual,
         formatDaysUntilDue,
         getStatusColor,
         getStatusIcon
-    } = useGraphMetrics();
+    } = useGraphMetrics(user?.id);
 
     // Load revision items from backend
     const loadRevisionItems = async () => {
         if (!user?.id) return;
 
         try {
+            setLoadingRevisionItems(true);
             const response = await apiClient.getRevisionItems(user.id);
             if (response.success) {
                 setRevisionItems(response.data);
 
-                // Calculate agenda for the next 30 days
+                // Calculate agenda for the next 90 days
                 const startDate = new Date();
                 const endDate = new Date();
-                endDate.setDate(endDate.getDate() + 30);
+                endDate.setDate(endDate.getDate() + 90);
 
                 const agendaData = getRevisionAgenda(
                     response.data,
@@ -70,34 +82,100 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
             }
         } catch (error) {
             console.error('Error loading revision items:', error);
+            handleApiError(error, 'Loading', 'revision items');
+        } finally {
+            setLoadingRevisionItems(false);
         }
     };
 
-    // Complete a revision item
-    const handleCompleteRevision = async (item: RevisionItem) => {
-        if (completingItems.has(item.id)) return; // Prevent duplicate requests
+    // Open rating modal for a revision item
+    const handleMarkCompleted = (item: RevisionItem) => {
+        setSelectedRevisionItem(item);
+        setShowRatingModal(true);
+    };
 
-        setCompletingItems(prev => new Set(prev).add(item.id));
+    const qc = useQueryClient();
+    const completionMutation = useMutation({
+        mutationFn: (data: { id: number, rating: 1 | 2 | 3 | 4 | 5 }) => apiClient.completeRevisionItem(data.id.toString(), { rating: data.rating }),
+        onSuccess: (updated) => {
+            const today = format(new Date(), 'yyyy-MM-dd');
+            // invalidate minimal sets
+            qc.invalidateQueries({ queryKey: QK.TODAY() });
+            qc.invalidateQueries({ queryKey: QK.REVISION_LIST() });
+            // if your calendar uses a known window, invalidate it too
+            // e.g., current month:
+            const monthStart = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd');
+            const monthEnd = format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), 'yyyy-MM-dd');
+            qc.invalidateQueries({ queryKey: QK.CAL_RANGE(monthStart, monthEnd) });
+
+            // Also refresh local state
+            loadRevisionItems();
+
+            if (mountedRef.current) {
+                setShowRatingModal(false);
+                setSelectedRevisionItem(null);
+                showSuccess(
+                    'Revision Completed',
+                    `Successfully completed revision with ${updated.rating || 'your'} star${updated.rating > 1 ? 's' : ''}!`
+                );
+            }
+        },
+        onError: (error) => {
+            console.error('Error completing revision item:', error);
+            if (mountedRef.current) {
+                handleApiError(error, 'Completing', 'revision item');
+            }
+        },
+        onSettled: () => {
+            if (mountedRef.current && selectedRevisionItem) {
+                setCompletingItems(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(selectedRevisionItem.id);
+                    return newSet;
+                });
+            }
+        }
+    });
+
+    // Complete a revision item with performance rating
+    const handleCompleteRevision = async (performanceRating: number) => {
+        if (!selectedRevisionItem || completingItems.has(selectedRevisionItem.id)) return;
+
+        // Validate performance rating
+        if (performanceRating < 1 || performanceRating > 5) {
+            showError('Invalid Rating', 'Performance rating must be between 1 and 5.');
+            return;
+        }
+
+        setCompletingItems(prev => new Set(prev).add(selectedRevisionItem.id));
+        completionMutation.mutate({ id: parseInt(selectedRevisionItem.id), rating: performanceRating as 1 | 2 | 3 | 4 | 5 });
+    };
+
+    // Bulk complete revision items
+    const handleBulkComplete = async (items: { item: RevisionItem, rating: number }[]) => {
+        if (!user?.id) return;
 
         try {
-            await apiClient.completeRevisionItem(item.id);
+            const completions = items.map(({ item, rating }) => ({
+                revisionItemId: item.id,
+                performanceRating: rating
+            }));
+
+            await apiClient.bulkCompleteRevisionItems(user.id, { completions });
             await loadRevisionItems(); // Refresh from backend
         } catch (error) {
-            console.error('Error completing revision item:', error);
-        } finally {
-            setCompletingItems(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(item.id);
-                return newSet;
-            });
+            console.error('Error bulk completing revision items:', error);
+            handleApiError(error, 'Bulk completing', 'revision items');
         }
     };
 
-    // Get items for selected date
+    // Get items for selected date with better date comparison
     const getItemsForSelectedDate = (): RevisionItem[] => {
-        return revisionItems.filter(item =>
-            item.nextRevisionDate === selectedDate && !item.isCompleted
-        );
+        return revisionItems.filter(item => {
+            // Normalize dates to avoid timezone issues
+            const itemDate = new Date(item.nextRevisionDate).toISOString().split('T')[0];
+            return itemDate === selectedDate && !item.isCompleted;
+        });
     };
 
     // Load MindGraph revision queue
@@ -113,28 +191,79 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
             if (response.success) {
                 // Refresh the revision queue
                 await loadGraphRevisionQueue();
-                alert(`Review posted successfully! Rating: ${rating}/5`);
+                showSuccess(
+                    'Review Posted',
+                    `Successfully posted ${rating}/5 star review!`
+                );
             } else {
-                alert('Failed to post review');
+                showError('Review Failed', 'Failed to post review. Please try again.');
             }
         } catch (error) {
             console.error('Error posting review:', error);
-            alert('Error posting review');
+            handleApiError(error, 'Posting', 'review');
+        }
+    };
+
+    const navigateDate = (direction: 'prev' | 'next') => {
+        const currentDate = new Date(selectedDate);
+        const newDate = new Date(currentDate);
+
+        if (direction === 'prev') {
+            newDate.setDate(currentDate.getDate() - 1);
+        } else {
+            newDate.setDate(currentDate.getDate() + 1);
+        }
+
+        const newDateString = newDate.toISOString().split('T')[0];
+        const minDate = '2020-01-01';
+        const maxDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        if (newDateString >= minDate && newDateString <= maxDate) {
+            setSelectedDate(newDateString);
+        }
+    };
+
+    const goToToday = () => {
+        setSelectedDate(new Date().toISOString().split('T')[0]);
+    };
+
+    const isMinDate = selectedDate <= '2020-01-01';
+    const isMaxDate = selectedDate >= new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const dateInputRef = useRef<HTMLInputElement>(null);
+
+    const openDatePicker = () => {
+        if (dateInputRef.current) {
+            dateInputRef.current.showPicker?.() || dateInputRef.current.click();
         }
     };
 
     useEffect(() => {
         loadRevisionItems();
         loadGraphRevisionQueue();
+
+        // Cleanup function
+        return () => {
+            mountedRef.current = false;
+        };
     }, [user?.id]);
+
+    // Set mounted flag on mount
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
 
     if (activeTab !== 'revision') {
         return null;
     }
 
     const todayItems = getItemsForSelectedDate();
-    const isToday = selectedDate === new Date().toISOString().split('T')[0];
-    const isPast = new Date(selectedDate) < new Date(new Date().toISOString().split('T')[0]);
+    const today = new Date().toISOString().split('T')[0];
+    const isToday = selectedDate === today;
+    const isPast = selectedDate < today;
 
     return (
         <div className="space-y-6">
@@ -182,25 +311,77 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
             </div>
 
             {/* Date Selector */}
-            <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-4">
-                    <Calendar className="h-5 w-5 text-gray-600" />
-                    <div>
-                        <label htmlFor="date-selector" className="block text-sm font-medium text-gray-700 mb-1">
-                            Select Date
-                        </label>
-                        <input
-                            type="date"
-                            id="date-selector"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-6">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <Calendar className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <h3 className="text-sm font-medium text-gray-700">Revision Date</h3>
+                        </div>
+
+                        <button
+                            onClick={goToToday}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                        >
+                            Jump to Today
+                        </button>
                     </div>
-                    <div className="flex-1">
-                        <p className="text-sm text-gray-600">
-                            {getRelativeDateDescription(selectedDate)} • {formatDateForDisplay(selectedDate)}
-                        </p>
+
+                    {/* Main Date Display */}
+                    <div className="flex items-center justify-center mb-4">
+                        <button
+                            onClick={() => navigateDate('prev')}
+                            disabled={isMinDate}
+                            className="p-3 text-gray-400 hover:text-blue-600 hover:bg-white/50 rounded-full transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Previous day"
+                        >
+                            <ChevronLeft className="h-5 w-5" />
+                        </button>
+
+                        <div className="flex-1 text-center px-8">
+                            <div className="text-2xl font-bold text-gray-900 mb-1">
+                                {formatDateForDisplay(selectedDate)}
+                            </div>
+                            <div className="text-sm font-medium text-blue-800">
+                                {getRelativeDateDescription(selectedDate)}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => navigateDate('next')}
+                            disabled={isMaxDate}
+                            className="p-3 text-gray-400 hover:text-blue-600 hover:bg-white/50 rounded-full transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Next day"
+                        >
+                            <ChevronRight className="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    {/* Calendar picker button */}
+                    <div className="text-center relative">
+                        <button
+                            onClick={openDatePicker}
+                            className="px-4 py-2 bg-white/60 backdrop-blur-sm border border-white/50 rounded-lg text-xs font-medium text-gray-600 hover:text-blue-700 hover:bg-white/80 hover:border-blue-200 cursor-pointer transition-all duration-200 flex items-center gap-2"
+                        >
+                            <Calendar className="h-3 w-3" />
+                            Pick different date
+                        </button>
+                        <input
+                            ref={dateInputRef}
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => {
+                                const newDate = e.target.value;
+                                if (newDate) {
+                                    setSelectedDate(newDate);
+                                }
+                            }}
+                            min="2020-01-01"
+                            max={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                            className="absolute inset-0 opacity-0 pointer-events-none"
+                        />
                     </div>
                 </div>
             </div>
@@ -218,7 +399,12 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
                 </div>
 
                 <div className="p-6">
-                    {todayItems.length === 0 ? (
+                    {loadingRevisionItems ? (
+                        <div className="text-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p className="text-gray-600">Loading revision items...</p>
+                        </div>
+                    ) : todayItems.length === 0 ? (
                         <div className="text-center py-8">
                             <RotateCcw className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                             <h3 className="text-lg font-medium text-gray-900 mb-2">No revisions scheduled</h3>
@@ -291,25 +477,34 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
                                             </div>
 
                                             <div className="flex items-center gap-3 ml-4">
+                                                {/* Linked Nodes Display */}
+                                                {item.linkedNodes && item.linkedNodes.length > 0 && (
+                                                    <div className="flex items-center gap-1 text-xs text-gray-600">
+                                                        <Network className="h-3 w-3" />
+                                                        <span>{item.linkedNodes.length} node{item.linkedNodes.length > 1 ? 's' : ''}</span>
+                                                    </div>
+                                                )}
+
                                                 {(isProblem ? problemData?.link : learningData?.link) && (
                                                     <a
                                                         href={isProblem ? problemData?.link : learningData?.link}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 shadow-sm hover:shadow-md"
+                                                        className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 shadow-sm hover:shadow-md"
                                                     >
                                                         <ExternalLink className="h-4 w-4" />
                                                         {isProblem ? 'View Problem' : 'View Resource'}
                                                     </a>
                                                 )}
 
+                                                {/* Mark Completed Button */}
                                                 <button
-                                                    onClick={() => handleCompleteRevision(item)}
+                                                    onClick={() => handleMarkCompleted(item)}
                                                     disabled={completingItems.has(item.id)}
-                                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 border border-green-600 rounded-lg hover:from-green-700 hover:to-green-800 hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-green-400 disabled:to-green-500"
+                                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-lg hover:bg-green-700 hover:border-green-700 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <CheckCircle className="h-4 w-4" />
-                                                    {completingItems.has(item.id) ? 'Completing...' : 'Mark Complete'}
+                                                    {completingItems.has(item.id) ? 'Completing...' : 'Mark Completed'}
                                                 </button>
                                             </div>
                                         </div>
@@ -330,7 +525,7 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
                             Upcoming Revisions
                         </h2>
                         <p className="text-sm text-gray-600 mt-1">
-                            Your revision schedule for the next 30 days
+                            Your revision schedule for the next 90 days
                         </p>
                     </div>
 
@@ -418,7 +613,12 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
                                                     )}
 
                                                     <div className="flex items-center gap-4 text-sm text-gray-600">
-                                                        <span>Strength: <span className="font-medium">{formatStrength(strength)}</span></span>
+                                                        {(() => {
+                                                            const strengthContext = getStrengthContextual(strength, node);
+                                                            return (
+                                                                <span>Strength: <span className={`font-medium ${strengthContext.colorClass}`}>{strengthContext.display}</span></span>
+                                                            );
+                                                        })()}
                                                         {dueDate && (
                                                             <span>Due: <span className="font-medium">{formatDaysUntilDue(dueDate)}</span></span>
                                                         )}
@@ -452,6 +652,66 @@ const Revision: React.FC<RevisionProps> = ({ activeTab, onTabChange }) => {
                     )}
                 </div>
             </div>
+
+            {/* Rating Modal */}
+            {showRatingModal && selectedRevisionItem && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                            Rate Your Performance
+                        </h3>
+
+                        <div className="mb-4">
+                            <p className="text-sm text-gray-600 mb-2">
+                                How well did you understand/complete this item?
+                            </p>
+                            <p className="font-medium text-gray-900">
+                                {selectedRevisionItem.itemType === 'problem'
+                                    ? selectedRevisionItem.problem?.title
+                                    : selectedRevisionItem.learningItem?.title}
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-5 gap-2 mb-6">
+                            {[1, 2, 3, 4, 5].map((rating) => (
+                                <button
+                                    key={rating}
+                                    onClick={() => handleCompleteRevision(rating)}
+                                    disabled={completingItems.has(selectedRevisionItem.id)}
+                                    className="flex flex-col items-center p-3 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <div className="flex mb-1">
+                                        {[...Array(rating)].map((_, i) => (
+                                            <Star key={i} className="h-4 w-4 text-yellow-400 fill-current" />
+                                        ))}
+                                        {[...Array(5 - rating)].map((_, i) => (
+                                            <Star key={i} className="h-4 w-4 text-gray-300" />
+                                        ))}
+                                    </div>
+                                    <span className="text-xs font-medium text-gray-700">
+                                        {rating === 1 ? 'Poor' :
+                                            rating === 2 ? 'Below Avg' :
+                                                rating === 3 ? 'Average' :
+                                                    rating === 4 ? 'Good' : 'Excellent'}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowRatingModal(false);
+                                    setSelectedRevisionItem(null);
+                                }}
+                                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

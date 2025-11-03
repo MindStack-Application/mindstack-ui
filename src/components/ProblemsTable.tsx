@@ -1,12 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Problem } from '../types';
 import { getDifficultyColor, getOutcomeColor, getStatusDotColor } from '../utils/helpers';
 import { useNotification } from './NotificationContext';
-import { ExternalLink, Search, Download, Plus, FileText, Monitor, X, Filter } from 'lucide-react';
+import { ExternalLink, Search, Download, Plus, FileText, Monitor, X, Filter, Link, AlertCircle } from 'lucide-react';
+import { apiClient } from '../utils/apis';
 
 interface ProblemsTableProps {
   problems: Problem[];
   onAddProblem: () => void;
+  onOpenLinkPanel: (problemId: number, problemTitle: string) => void;
 }
 
 interface FilterState {
@@ -17,9 +19,11 @@ interface FilterState {
   outcome: string;
 }
 
-const ProblemsTable: React.FC<ProblemsTableProps> = ({ problems, onAddProblem }) => {
+const ProblemsTable: React.FC<ProblemsTableProps> = ({ problems, onAddProblem, onOpenLinkPanel }) => {
   const { showSuccess, showError } = useNotification();
   const [showFilters, setShowFilters] = useState(false);
+  const [linkStatuses, setLinkStatuses] = useState<Record<number, boolean>>({});
+  const [loadingLinks, setLoadingLinks] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     platform: '',
@@ -39,6 +43,30 @@ const ProblemsTable: React.FC<ProblemsTableProps> = ({ problems, onAddProblem })
 
   const difficulties = ['easy', 'medium', 'hard'];
   const outcomes = ['solved', 'hints', 'failed'];
+
+  // Load link statuses for all problems
+  useEffect(() => {
+    const loadLinkStatuses = async () => {
+      if (problems.length === 0) return;
+
+      setLoadingLinks(true);
+      const statuses: Record<number, boolean> = {};
+
+      try {
+        for (const problem of problems) {
+          const response = await apiClient.getItemLinks('problem', problem.id);
+          statuses[problem.id] = response.success && response.data && response.data.length > 0;
+        }
+        setLinkStatuses(statuses);
+      } catch (error) {
+        console.error('Error loading link statuses:', error);
+      } finally {
+        setLoadingLinks(false);
+      }
+    };
+
+    loadLinkStatuses();
+  }, [problems]);
 
   // Filter problems based on current filters
   const filteredProblems = useMemo(() => {
@@ -280,13 +308,14 @@ const ProblemsTable: React.FC<ProblemsTableProps> = ({ problems, onAddProblem })
               <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide text-xs">Time</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide text-xs">Outcome</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide text-xs">Date</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide text-xs">Graph</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide text-xs">Solution</th>
             </tr>
           </thead>
           <tbody>
             {filteredProblems.length === 0 && problems.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center gap-3">
                     <Monitor size={48} className="text-gray-300" />
                     <div>
@@ -299,7 +328,7 @@ const ProblemsTable: React.FC<ProblemsTableProps> = ({ problems, onAddProblem })
             )}
             {filteredProblems.length === 0 && problems.length > 0 && (
               <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center gap-3">
                     <Search size={48} className="text-gray-300" />
                     <div>
@@ -369,6 +398,26 @@ const ProblemsTable: React.FC<ProblemsTableProps> = ({ problems, onAddProblem })
                 </td>
                 <td className="px-4 py-4">
                   <span className="text-gray-500 text-xs">{formatDateToCustomString(problem.date)}</span>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-2">
+                    {loadingLinks ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                    ) : linkStatuses[problem.id] ? (
+                      <div className="flex items-center gap-1 text-green-600">
+                        <Link size={14} />
+                        <span className="text-xs font-medium">Linked</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => onOpenLinkPanel(problem.id, problem.title)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 hover:border-orange-300 transition-colors"
+                      >
+                        <AlertCircle size={12} />
+                        Link Required
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-4">
                   {problem.codeLink ? (

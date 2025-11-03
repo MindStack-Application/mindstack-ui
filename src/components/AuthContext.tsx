@@ -73,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
                 if (response.success) {
                     setUser(response.data);
                     setIsAuthenticated(true);
-                    localStorage.setItem("authToken", response.token); // Assuming response contains a token
+                    apiClient.setToken(response.token); // Use API client method for consistency
                     return response; // Return the response for the caller to handle
                 } else {
                     console.error('Login failed:', response.message);
@@ -92,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
                 if (response.success) {
                     setUser(response.data);
                     setIsAuthenticated(true);
-                    localStorage.setItem("authToken", response.token); // Assuming response contains a token
+                    apiClient.setToken(response.token); // Use API client method for consistency
                     return response; // Return the response for the caller to handle
                 } else {
                     console.error('Signup failed:', response.message);
@@ -108,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const logout = () => {
         setUser(null);
         setIsAuthenticated(false);
-        localStorage.removeItem("authToken");
+        apiClient.clearToken();
     };
 
     const loginWithGoogle = () => {
@@ -125,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             if (response.success) {
                 setUser(response.data);
                 setIsAuthenticated(true);
-                localStorage.setItem("authToken", response.token);
+                apiClient.setToken(response.token);
                 return response;
             } else {
                 throw new Error(response.message || 'OAuth verification failed');

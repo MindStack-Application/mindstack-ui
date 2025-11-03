@@ -14,7 +14,7 @@ import NodePanel from './NodePanel';
 import GraphControls from './GraphControls';
 import GraphSettings from './GraphSettings';
 import { useGraphData, useGraphMetrics } from '../../hooks/useGraphData';
-import type { GraphNode, GraphSettings as GraphSettingsType } from '../../types';
+import type { GraphNode, GraphSettings as GraphSettingsType } from '../../types/graph';
 
 interface GraphViewerProps {
     graphId?: string;
@@ -22,14 +22,13 @@ interface GraphViewerProps {
 
 const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
     const { graphId: urlGraphId } = useParams<{ graphId: string }>();
-    const graphId = propGraphId || urlGraphId || 'default';
+    const graphId = propGraphId || urlGraphId;
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
     const [showSettings, setShowSettings] = useState(false);
     const [selectedTool, setSelectedTool] = useState('select');
     const [settings, setSettings] = useState<GraphSettingsType>({
         showGrid: true,
         showMinimap: true,
-        autoLayout: false,
         horizonDays: 14
     });
 
@@ -39,16 +38,27 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
         loading,
         createNode,
         updateNode,
+        updateNodePosition,
         deleteNode,
         createEdge,
-        deleteEdge
-    } = useGraphData();
+        deleteEdge,
+        recalculateNodeStrength
+    } = useGraphData(graphId);
 
     const safeNodes = nodes || [];
     const safeEdges = edges || [];
 
-    console.log('GraphViewer - nodes:', safeNodes);
-    console.log('GraphViewer - edges:', safeEdges);
+    // Show error message if no graphId is provided
+    if (!graphId) {
+        return (
+            <div className="h-full flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Graph Selected</h3>
+                    <p className="text-gray-600">Please select a graph to view.</p>
+                </div>
+            </div>
+        );
+    }
 
     const handleNodeSelect = useCallback((node: GraphNode | null) => {
         setSelectedNode(node);
@@ -71,24 +81,22 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
         setSelectedTool(tool);
     }, []);
 
-    const handleCreateNodeFromToolbar = useCallback(async (type: string) => {
-        console.log('Creating node from toolbar:', type);
+    const handleCreateNodeFromToolbar = useCallback(async () => {
         // Use the global function exposed by GraphCanvas
         if ((window as any).createNodeAtCenter) {
-            console.log('Calling createNodeAtCenter');
-            await (window as any).createNodeAtCenter(type);
-        } else {
-            console.log('createNodeAtCenter not available');
+            await (window as any).createNodeAtCenter();
         }
     }, []);
 
     const handleNodeUpdate = useCallback(async (nodeId: number, updates: any) => {
-        await updateNode(nodeId, updates);
+        const success = await updateNode(nodeId, updates);
 
         // Update selected node if it's the one being updated
-        if (selectedNode?.id === nodeId) {
+        if (success && selectedNode?.id === nodeId) {
             setSelectedNode(prev => prev ? { ...prev, ...updates } : null);
         }
+
+        return success;
     }, [updateNode, selectedNode]);
 
     const handleNodeDelete = useCallback(async (nodeId: number) => {
@@ -101,6 +109,38 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
         }
         return success;
     }, [deleteNode, selectedNode]);
+
+    const handleAddChildNode = useCallback(async (parentNodeId: number) => {
+        const parentNode = safeNodes.find(n => n.id === parentNodeId);
+        if (!parentNode) return;
+
+        // Create position for child node (slightly below and to the right)
+        const childPosition = {
+            x: (parentNode.position?.x || 0) + 150,
+            y: (parentNode.position?.y || 0) + 100
+        };
+
+        // Create the child node
+        const childNode = await createNode({
+            title: 'New Child Node',
+            type: 'concept',
+            position: childPosition,
+            description: ''
+        });
+
+        if (childNode) {
+            // Create edge connecting parent to child
+            await createEdge({
+                sourceNodeId: parentNodeId,
+                targetNodeId: childNode.id,
+                relationshipType: 'parent_child',
+                weight: 1.0
+            });
+
+            // Select the new child node
+            setSelectedNode(childNode);
+        }
+    }, [safeNodes, createNode, createEdge, setSelectedNode]);
 
     // Handle keyboard shortcuts
     useEffect(() => {
@@ -176,28 +216,28 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
                 <div className="flex items-center space-x-2">
                     <button
                         onClick={handleExport}
-                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md toolbar-button"
                         title="Export Graph"
                     >
                         <Download className="h-4 w-4" />
                     </button>
                     <button
                         onClick={handleShare}
-                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md toolbar-button"
                         title="Share Graph"
                     >
                         <Share className="h-4 w-4" />
                     </button>
                     <button
                         onClick={() => setShowSettings(!showSettings)}
-                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md toolbar-button"
                         title="Settings"
                     >
                         <Settings className="h-4 w-4" />
                     </button>
                     <button
                         onClick={handleClose}
-                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md toolbar-button"
                         title="Close"
                     >
                         <X className="h-4 w-4" />
@@ -221,10 +261,13 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
                         edges={safeEdges}
                         onNodeSelect={handleNodeSelect}
                         onNodeCreate={handleNodeCreate}
-                        onNodeUpdate={handleNodeUpdate}
+                        onNodeUpdate={updateNode}
+                        updateNodePosition={updateNodePosition}
                         selectedNode={selectedNode}
                         settings={settings}
                         onCreateNodeAtCenter={handleCreateNodeFromToolbar}
+                        createEdge={createEdge}
+                        deleteEdge={deleteEdge}
                     />
 
                     {/* Graph Controls Overlay */}
@@ -241,6 +284,8 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ graphId: propGraphId }) => {
                             onUpdate={handleNodeUpdate}
                             onDelete={handleNodeDelete}
                             onClose={() => setSelectedNode(null)}
+                            onAddChildNode={handleAddChildNode}
+                            onRecalculateStrength={recalculateNodeStrength}
                         />
                     ) : (
                         <div className="p-6 text-center text-gray-600">

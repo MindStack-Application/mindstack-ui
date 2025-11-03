@@ -4,9 +4,32 @@
  * TypeScript type definitions for the MindGraph feature.
  */
 
+export interface Graph {
+    id: number;
+    userId: number;
+    name: string;
+    description?: string;
+    color: string;
+    isDefault: boolean;
+    metadata: Record<string, any>;
+    createdAt: string;
+    updatedAt: string;
+    // Computed fields
+    nodeCount?: number;
+    edgeCount?: number;
+    lastModified?: string;
+}
+
+export interface CreateGraphData {
+    name: string;
+    description?: string;
+    color?: string;
+}
+
 export interface GraphNode {
     id: number;
     userId: number;
+    graphId: number;
     title: string;
     type: 'concept' | 'skill' | 'topic' | 'resource';
     description?: string;
@@ -17,13 +40,13 @@ export interface GraphNode {
     position: { x: number; y: number };
     createdAt: string;
     updatedAt: string;
-    metric?: NodeMetric;
     reviews?: Review[];
 }
 
 export interface GraphEdge {
     id: number;
     userId: number;
+    graphId: number;
     sourceNodeId: number;
     targetNodeId: number;
     relationshipType: 'prerequisite' | 'related' | 'depends_on' | 'leads_to';
@@ -35,16 +58,6 @@ export interface GraphEdge {
     target?: GraphNode;
 }
 
-export interface NodeMetric {
-    id: number;
-    nodeId: number;
-    strength: number;
-    lastVisited?: string;
-    dueDate?: string;
-    status: 'due' | 'stale' | 'ok';
-    predictedWeakDate?: string;
-    updatedAt: string;
-}
 
 export interface Review {
     id: number;
@@ -71,6 +84,7 @@ export interface CreateNodeData {
     description?: string;
     position?: { x: number; y: number };
     metadata?: Record<string, any>;
+    graphId?: number;
 }
 
 export interface UpdateNodeData {
@@ -101,9 +115,16 @@ export interface RevisionQueueOptions {
 }
 
 export interface GraphSettings {
+    // Revision settings
+    preset: 'gentle' | 'balanced' | 'intensive';
+    sMax: number;
+    gFactor: number;
+    propagationDepth: number;
     horizonDays: number;
-    threshold: number;
-    autoLayout: boolean;
+    weakThreshold: number;
+    jitterEnabled: boolean;
+
+    // UI settings (existing)
     showGrid: boolean;
     snapToGrid: boolean;
 }

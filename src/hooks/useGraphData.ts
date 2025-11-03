@@ -4,8 +4,9 @@
  * Custom hooks for managing graph data and metrics.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiClient } from '../utils/apis';
+import { formatStrengthDetailed, formatStrengthContextual, hasNodeBeenStudied } from '../utils/strengthUtils';
 import type {
     GraphData,
     GraphNode,
@@ -15,21 +16,28 @@ import type {
     CreateEdgeData,
     PostReviewData,
     RevisionQueueOptions
-} from '../types';
+} from '../types/graph';
 
 /**
  * Hook for managing graph data
  */
-export const useGraphData = () => {
+export const useGraphData = (graphId?: string | number) => {
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const positionUpdateTimeoutRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
 
     const fetchGraphData = useCallback(async () => {
+        if (!graphId) {
+            setError('No graph ID provided');
+            setLoading(false);
+            return;
+        }
+
         try {
             setLoading(true);
             setError(null);
-            const response = await apiClient.getGraph();
+            const response = await apiClient.getGraph(Number(graphId));
             if (response.success) {
                 setGraphData(response.data);
             } else {
@@ -40,46 +48,118 @@ export const useGraphData = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [graphId]);
 
     const createNode = useCallback(async (nodeData: CreateNodeData): Promise<GraphNode | null> => {
         try {
             const response = await apiClient.createNode(nodeData);
             if (response.success) {
-                await fetchGraphData(); // Refresh data
+                // Optimistic update - add node to local state immediately
+                setGraphData(prev => prev ? {
+                    ...prev,
+                    nodes: [...prev.nodes, response.data]
+                } : null);
                 return response.data;
             }
             return null;
         } catch (err) {
             console.error('Error creating node:', err);
+            // Revert optimistic update on error
+            await fetchGraphData();
             return null;
         }
     }, [fetchGraphData]);
 
+    const updateNodePosition = useCallback(async (nodeId: number, position: { x: number; y: number }): Promise<boolean> => {
+        // Clear existing timeout for this node
+        const existingTimeout = positionUpdateTimeoutRef.current.get(nodeId);
+        if (existingTimeout) {
+            clearTimeout(existingTimeout);
+        }
+
+        // Optimistic update - update position in local state immediately
+        setGraphData(prev => prev ? {
+            ...prev,
+            nodes: prev.nodes.map(node =>
+                node.id === nodeId ? { ...node, position } : node
+            )
+        } : null);
+
+        // Debounce the API call
+        return new Promise((resolve) => {
+            const timeout = setTimeout(async () => {
+                try {
+                    const response = await apiClient.updateNode(nodeId, { position });
+                    if (response.success) {
+                        resolve(true);
+                    } else {
+                        // Revert optimistic update on error
+                        await fetchGraphData();
+                        resolve(false);
+                    }
+                } catch (err) {
+                    console.error('Error updating node position:', err);
+                    // Revert optimistic update on error
+                    await fetchGraphData();
+                    resolve(false);
+                } finally {
+                    positionUpdateTimeoutRef.current.delete(nodeId);
+                }
+            }, 500); // 500ms debounce
+
+            positionUpdateTimeoutRef.current.set(nodeId, timeout);
+        });
+    }, [fetchGraphData]);
+
     const updateNode = useCallback(async (nodeId: number, nodeData: UpdateNodeData): Promise<boolean> => {
         try {
+            // Optimistic update - update node in local state immediately
+            setGraphData(prev => prev ? {
+                ...prev,
+                nodes: prev.nodes.map(node =>
+                    node.id === nodeId ? { ...node, ...nodeData } : node
+                )
+            } : null);
+
             const response = await apiClient.updateNode(nodeId, nodeData);
             if (response.success) {
-                await fetchGraphData(); // Refresh data
                 return true;
+            } else {
+                // Revert optimistic update on error
+                await fetchGraphData();
+                return false;
             }
-            return false;
         } catch (err) {
             console.error('Error updating node:', err);
+            // Revert optimistic update on error
+            await fetchGraphData();
             return false;
         }
     }, [fetchGraphData]);
 
     const deleteNode = useCallback(async (nodeId: number): Promise<boolean> => {
         try {
+            // Optimistic update - remove node from local state immediately
+            setGraphData(prev => prev ? {
+                ...prev,
+                nodes: prev.nodes.filter(node => node.id !== nodeId),
+                edges: prev.edges.filter(edge =>
+                    edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId
+                )
+            } : null);
+
             const response = await apiClient.deleteNode(nodeId);
             if (response.success) {
-                await fetchGraphData(); // Refresh data
                 return true;
+            } else {
+                // Revert optimistic update on error
+                await fetchGraphData();
+                return false;
             }
-            return false;
         } catch (err) {
             console.error('Error deleting node:', err);
+            // Revert optimistic update on error
+            await fetchGraphData();
             return false;
         }
     }, [fetchGraphData]);
@@ -88,26 +168,42 @@ export const useGraphData = () => {
         try {
             const response = await apiClient.createEdge(edgeData);
             if (response.success) {
-                await fetchGraphData(); // Refresh data
+                // Optimistic update - add edge to local state immediately
+                setGraphData(prev => prev ? {
+                    ...prev,
+                    edges: [...prev.edges, response.data]
+                } : null);
                 return response.data;
             }
             return null;
         } catch (err) {
             console.error('Error creating edge:', err);
+            // Revert optimistic update on error
+            await fetchGraphData();
             return null;
         }
     }, [fetchGraphData]);
 
     const deleteEdge = useCallback(async (edgeId: number): Promise<boolean> => {
         try {
+            // Optimistic update - remove edge from local state immediately
+            setGraphData(prev => prev ? {
+                ...prev,
+                edges: prev.edges.filter(edge => edge.id !== edgeId)
+            } : null);
+
             const response = await apiClient.deleteEdge(edgeId);
             if (response.success) {
-                await fetchGraphData(); // Refresh data
                 return true;
+            } else {
+                // Revert optimistic update on error
+                await fetchGraphData();
+                return false;
             }
-            return false;
         } catch (err) {
             console.error('Error deleting edge:', err);
+            // Revert optimistic update on error
+            await fetchGraphData();
             return false;
         }
     }, [fetchGraphData]);
@@ -116,7 +212,8 @@ export const useGraphData = () => {
         try {
             const response = await apiClient.postReview(reviewData);
             if (response.success) {
-                await fetchGraphData(); // Refresh data
+                // Only refresh data for reviews as they affect metrics
+                await fetchGraphData();
                 return true;
             }
             return false;
@@ -125,6 +222,22 @@ export const useGraphData = () => {
             return false;
         }
     }, [fetchGraphData]);
+
+    const recalculateNodeStrength = useCallback(async (nodeId: number): Promise<boolean> => {
+        try {
+            const response = await apiClient.recalculateNodeStrength(nodeId);
+            if (response.success) {
+                // Refresh data to show updated strength
+                await fetchGraphData();
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.error('Error recalculating node strength:', err);
+            return false;
+        }
+    }, [fetchGraphData]);
+
 
     useEffect(() => {
         fetchGraphData();
@@ -139,26 +252,34 @@ export const useGraphData = () => {
         refetch: fetchGraphData,
         createNode,
         updateNode,
+        updateNodePosition,
         deleteNode,
         createEdge,
         deleteEdge,
-        postReview
+        postReview,
+        recalculateNodeStrength
     };
 };
 
 /**
  * Hook for managing graph metrics and status
+ * Simplified to only handle strength-related functionality
  */
-export const useGraphMetrics = () => {
+export const useGraphMetrics = (userId?: string) => {
     const [revisionQueue, setRevisionQueue] = useState<GraphNode[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const fetchRevisionQueue = useCallback(async (options?: RevisionQueueOptions) => {
+        if (!userId) {
+            setError('User ID is required');
+            return;
+        }
+
         try {
             setLoading(true);
             setError(null);
-            const response = await apiClient.getRevisionQueue(options);
+            const response = await apiClient.getRevisionQueue(userId, options);
             if (response.success) {
                 setRevisionQueue(response.data);
             } else {
@@ -169,25 +290,25 @@ export const useGraphMetrics = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [userId]);
 
     const getNodeStatus = useCallback((node: GraphNode): 'due' | 'stale' | 'ok' => {
-        if (!node.metric) return 'ok';
-        return node.metric.status;
+        // Simplified: always return 'ok' since we removed complex metrics
+        return 'ok';
     }, []);
 
     const getNodeStrength = useCallback((node: GraphNode): number => {
-        return node.metric?.strength || 0.5;
+        return node.strength || 1.0;
     }, []);
 
     const getNodeDueDate = useCallback((node: GraphNode): Date | null => {
-        if (!node.metric?.dueDate) return null;
-        return new Date(node.metric.dueDate);
+        // Simplified: return null since we removed due date calculations
+        return null;
     }, []);
 
     const getNodePredictedWeakDate = useCallback((node: GraphNode): Date | null => {
-        if (!node.metric?.predictedWeakDate) return null;
-        return new Date(node.metric.predictedWeakDate);
+        // Simplified: return null since we removed weak date predictions
+        return null;
     }, []);
 
     const isNodeDue = useCallback((node: GraphNode): boolean => {
@@ -230,8 +351,26 @@ export const useGraphMetrics = () => {
         return priority;
     }, [getNodeStatus, getNodeStrength, isNodeDue, isNodePredictedWeak]);
 
-    const formatStrength = useCallback((strength: number): string => {
-        return `${Math.round(strength * 100)}%`;
+    const formatStrength = useCallback((strength: number, node?: any): string => {
+        if (node) {
+            const hasStudied = hasNodeBeenStudied(node);
+            const contextual = formatStrengthContextual(strength, hasStudied);
+            return contextual.display;
+        }
+        return formatStrengthDetailed(strength).percent;
+    }, []);
+
+    const getStrengthContextual = useCallback((strength: number, node?: any) => {
+        if (node) {
+            const hasStudied = hasNodeBeenStudied(node);
+            return formatStrengthContextual(strength, hasStudied);
+        }
+        return {
+            display: formatStrengthDetailed(strength).percent,
+            colorClass: 'text-gray-700',
+            showPercentage: true,
+            description: `${Math.round(strength * 100)}% mastery`
+        };
     }, []);
 
     const formatDaysUntilDue = useCallback((dueDate: Date): string => {
@@ -276,6 +415,7 @@ export const useGraphMetrics = () => {
         isNodePredictedWeak,
         getNodePriority,
         formatStrength,
+        getStrengthContextual,
         formatDaysUntilDue,
         getStatusColor,
         getStatusIcon

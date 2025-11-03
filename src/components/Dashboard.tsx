@@ -11,6 +11,7 @@ import MindGraph from './MindGraph';
 import type { Problem, LearningItem, RevisionItem, Roadmap } from '../types';
 import { apiClient } from '../utils/apis';
 import { AuthContext } from './AuthContext';
+import { useFeatureFlag } from './FeatureFlagsContext';
 import { Rocket } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
@@ -23,6 +24,7 @@ export const Dashboard: React.FC = () => {
     const [loadingStats, setLoadingStats] = useState(true);
     const { user } = React.useContext(AuthContext);
     const navigate = useNavigate();
+    const isRoadmapsEnabled = useFeatureFlag('roadmaps');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -60,10 +62,19 @@ export const Dashboard: React.FC = () => {
         navigate('/settings');
     };
 
+    const handleTabChange = (tab: string) => {
+        // If trying to access roadmaps when disabled, redirect to dashboard
+        if (tab === 'roadmaps' && !isRoadmapsEnabled) {
+            setActiveTab('dashboard');
+            return;
+        }
+        setActiveTab(tab);
+    };
+
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="max-w-7xl mx-auto p-6">
-                <Header activeTab={activeTab} onTabChange={setActiveTab} onSettingsClick={handleSettingsClick} />
+                <Header activeTab={activeTab} onTabChange={handleTabChange} onSettingsClick={handleSettingsClick} />
 
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6">
@@ -267,7 +278,7 @@ export const Dashboard: React.FC = () => {
                     </div>
                 )}
 
-                {activeTab === 'roadmaps' && (
+                {activeTab === 'roadmaps' && isRoadmapsEnabled && (
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden p-6">
                         <Roadmaps activeTab={activeTab} onTabChange={setActiveTab} />
                     </div>

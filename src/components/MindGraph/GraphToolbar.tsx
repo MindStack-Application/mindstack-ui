@@ -4,22 +4,16 @@
  * Clean icon-only toolbar for graph tools.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
     Target,
-    Circle,
-    Zap,
-    BookOpen,
-    Square,
-    ArrowRight,
-    Type,
-    StickyNote
+    Plus
 } from 'lucide-react';
 
 interface GraphToolbarProps {
     onToolSelect: (tool: string) => void;
     selectedTool: string;
-    onCreateNode: (type: string) => void;
+    onCreateNode: (type?: string) => void;
 }
 
 const GraphToolbar: React.FC<GraphToolbarProps> = ({
@@ -32,58 +26,22 @@ const GraphToolbar: React.FC<GraphToolbarProps> = ({
             id: 'select',
             name: 'Select',
             icon: <Target className="h-5 w-5" />,
-            description: 'Select and move elements'
+            description: 'Select and move nodes around the canvas'
         },
         {
-            id: 'concept',
-            name: 'Concept',
-            icon: <Circle className="h-5 w-5" />,
-            description: 'Add a concept node'
-        },
-        {
-            id: 'skill',
-            name: 'Skill',
-            icon: <Zap className="h-5 w-5" />,
-            description: 'Add a skill node'
-        },
-        {
-            id: 'topic',
-            name: 'Topic',
-            icon: <BookOpen className="h-5 w-5" />,
-            description: 'Add a topic node'
-        },
-        {
-            id: 'resource',
-            name: 'Resource',
-            icon: <Square className="h-5 w-5" />,
-            description: 'Add a resource node'
-        },
-        {
-            id: 'connection',
-            name: 'Connect',
-            icon: <ArrowRight className="h-5 w-5" />,
-            description: 'Connect nodes'
-        },
-        {
-            id: 'text',
-            name: 'Text',
-            icon: <Type className="h-5 w-5" />,
-            description: 'Add text annotation'
-        },
-        {
-            id: 'note',
-            name: 'Note',
-            icon: <StickyNote className="h-5 w-5" />,
-            description: 'Add a sticky note'
+            id: 'node',
+            name: 'Node',
+            icon: <Plus className="h-5 w-5" />,
+            description: 'Add a new node to the graph'
         }
     ];
 
     const handleToolClick = (toolId: string) => {
         onToolSelect(toolId);
 
-        // If it's a node type, create the node immediately
-        if (['concept', 'skill', 'topic', 'resource'].includes(toolId)) {
-            onCreateNode(toolId);
+        // If it's the node tool, create a new node
+        if (toolId === 'node') {
+            onCreateNode();
         }
     };
 
@@ -96,7 +54,7 @@ const GraphToolbar: React.FC<GraphToolbarProps> = ({
                         key={tool.id}
                         onClick={() => handleToolClick(tool.id)}
                         className={`
-                            w-12 h-12 flex items-center justify-center rounded-lg transition-all duration-200
+                            w-12 h-12 flex items-center justify-center rounded-lg toolbar-button
                             ${selectedTool === tool.id
                                 ? 'bg-blue-500 text-white shadow-md'
                                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
