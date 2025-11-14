@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.PROD ? '/api' : 'https://mindstack-api.onrender.com/api';
+const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:7007/api';
 
 class ApiClient {
   private baseUrl: string;
@@ -85,14 +85,46 @@ class ApiClient {
   }
 
   // Problems methods
-  async getProblems(id: string) {
-    return this.request(`/problems/users/${id}/problems`);
+  async getProblems(id: string, params?: Record<string,string>) {
+    let url = `/problems/users/${id}/problems`;
+    if (params && Object.keys(params).length) {
+      const qs = new URLSearchParams(params).toString();
+      url = `${url}?${qs}`;
+    }
+    return this.request(url);
   }
 
   async createProblem(problemData: any, user: { id: string | undefined }) {
     return this.request(`/problems/users/${user.id}/problems`, {
       method: 'POST',
       body: JSON.stringify(problemData)
+    });
+  }
+
+  // Upload problems (multipart form-data)
+  async uploadProblems(userId: string, file: File) {
+    const url = `${this.baseUrl}/problems/users/${userId}/problems/upload`;
+    const token = this.getToken();
+    const form = new FormData();
+    form.append('file', file, file.name);
+
+    const headers: Record<string,string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(url, { method: 'POST', headers, body: form });
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    return res.json();
+  }
+
+  // Today's assignments
+  async getTodaysAssignments(userId: string) {
+    return this.request(`/problems/users/${userId}/assignments/today`);
+  }
+
+  // Complete an assignment
+  async completeAssignment(assignmentId: string | number) {
+    return this.request(`/problems/assignments/${assignmentId}/complete`, {
+      method: 'POST'
     });
   }
 

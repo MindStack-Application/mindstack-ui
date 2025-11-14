@@ -11,6 +11,7 @@ import { SignupPage } from './components/SignupPage';
 import Settings from './components/Settings';
 import OAuthCallback from './components/OAuthCallback';
 import GraphViewer from './components/MindGraph/GraphViewer';
+import ThemeToggle from './components/ThemeToggle';
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -45,33 +46,38 @@ function App() {
         <NotificationProvider>
           <AuthProvider>
             <BrowserRouter>
-              <Routes>
-                <Route path="/" element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } />
-                <Route path="/dashboard" element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/signup" element={<SignupPage />} />
-                <Route path="/auth/callback" element={<OAuthCallback />} />
-                <Route path="/settings" element={
-                  <ProtectedRoute>
-                    <Settings onBack={() => window.history.back()} />
-                  </ProtectedRoute>
-                } />
-                <Route path="/mindgraph/:graphId" element={
-                  <ProtectedRoute>
-                    <GraphViewer />
-                  </ProtectedRoute>
-                } />
-                {/* Add more routes as needed */}
-                <Route path="*" element={<div>404 Not Found</div>} />
-              </Routes>
+              <div className="main-app-surface">
+                <div className="p-4 flex justify-end">
+                  <ThemeToggle />
+                </div>
+                <Routes>
+                  <Route path="/" element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/dashboard" element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/signup" element={<SignupPage />} />
+                  <Route path="/auth/callback" element={<OAuthCallback />} />
+                  <Route path="/settings" element={
+                    <ProtectedRoute>
+                      <Settings onBack={() => window.history.back()} />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/mindgraph/:graphId" element={
+                    <ProtectedRoute>
+                      <GraphViewer />
+                    </ProtectedRoute>
+                  } />
+                  {/* Add more routes as needed */}
+                  <Route path="*" element={<div>404 Not Found</div>} />
+                </Routes>
+              </div>
             </BrowserRouter>
           </AuthProvider>
         </NotificationProvider>

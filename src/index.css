@@ -2,8 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a;
+}
+
+.dark {
+  --bg: #0b1220;
+  --fg: #e6f0ff;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
 }
 
 /* Notification Animations */
@@ -132,4 +144,72 @@ body {
 
 .toolbar-button:hover {
   transition: background-color 0.05s ease-in-out, color 0.05s ease-in-out, box-shadow 0.05s ease-in-out;
+}
+
+/* Dark-mode utility overrides for components that use Tailwind utility classes like bg-white, text-black, borders, etc. */
+.dark .bg-white {
+  background-color: var(--bg) !important;
+}
+.dark .bg-gray-50,
+.dark .bg-gray-100,
+.dark .bg-gray-200 {
+  background-color: var(--bg) !important;
+}
+
+.dark .text-black,
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: var(--fg) !important;
+}
+
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-gray-400 {
+  color: rgba(230,240,255,0.85) !important;
+}
+
+.dark .border-gray-200,
+.dark .border-gray-300,
+.dark .border-gray-400,
+.dark .border {
+  border-color: rgba(255,255,255,0.06) !important;
+}
+
+/* Card and surface shadows to be more subtle in dark mode */
+.dark .shadow,
+.dark .shadow-md,
+.dark .shadow-lg {
+  box-shadow: 0 6px 18px rgba(2,6,23,0.5) !important;
+}
+
+/* Form elements */
+.dark input,
+.dark textarea,
+.dark select,
+.dark button {
+  background-color: rgba(255,255,255,0.02) !important;
+  color: var(--fg) !important;
+  border-color: rgba(255,255,255,0.06) !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgba(230,240,255,0.6) !important;
+}
+
+/* Links */
+.dark a {
+  color: #60a5fa !important; /* blue-400 */
+}
+
+/* Ensure root app surfaces fill the screen and inherit bg */
+html, body, #root {
+  height: 100%;
+}
+
+.main-app-surface {
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--fg);
 }

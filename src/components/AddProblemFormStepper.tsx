@@ -10,9 +10,10 @@ import type { NewProblemForm } from '../types';
 interface AddProblemFormStepperProps {
     onSubmit: (data: NewProblemForm) => void;
     onCancel: () => void;
+    initialData?: NewProblemForm;
 }
 
-const AddProblemFormStepper: React.FC<AddProblemFormStepperProps> = ({ onSubmit, onCancel }) => {
+const AddProblemFormStepper: React.FC<AddProblemFormStepperProps> = ({ onSubmit, onCancel, initialData }) => {
     const { user } = React.useContext(AuthContext);
     const { showSuccess, showError } = useNotification();
     const [currentStep, setCurrentStep] = useState(1);
@@ -22,7 +23,7 @@ const AddProblemFormStepper: React.FC<AddProblemFormStepperProps> = ({ onSubmit,
     const [hasGraphs, setHasGraphs] = useState(true);
     const [isValidTitle, setIsValidTitle] = useState(true);
 
-    const [formData, setFormData] = useState<NewProblemForm>({
+    const [formData, setFormData] = useState<NewProblemForm>(initialData || {
         title: '',
         platform: '',
         difficulty: '',
@@ -36,6 +37,11 @@ const AddProblemFormStepper: React.FC<AddProblemFormStepperProps> = ({ onSubmit,
         isRevision: true,
         codeLink: '',
     });
+
+    // If initialData changes (when opening modal), update formData
+    useEffect(() => {
+        if (initialData) setFormData(initialData);
+    }, [initialData]);
 
     // Smart selection data
     const platforms = ['LeetCode', 'HackerRank', 'CodeChef', 'Codeforces', 'AtCoder', 'InterviewBit'];

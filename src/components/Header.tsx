@@ -14,6 +14,7 @@ const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onSettingsClick
 
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'imported', label: 'Imported', icon: List },
     { id: 'problems', label: 'Problem Solving', icon: Activity },
     { id: 'learning', label: 'Learning', icon: BookOpen },
     { id: 'revision', label: 'Revision', icon: RotateCcw },

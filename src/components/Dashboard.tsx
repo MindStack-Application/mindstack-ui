@@ -8,11 +8,14 @@ import Revision from './Revision';
 import Roadmaps from './Roadmaps';
 import AdvancedAnalytics from './AdvancedAnalytics';
 import MindGraph from './MindGraph';
+import TodaysAssignments from './TodaysAssignments';
+import UploadProblems from './UploadProblems';
 import type { Problem, LearningItem, RevisionItem, Roadmap } from '../types';
 import { apiClient } from '../utils/apis';
 import { AuthContext } from './AuthContext';
 import { useFeatureFlag } from './FeatureFlagsContext';
 import { Rocket } from 'lucide-react';
+import ImportedProblemsPage from '../pages/ImportedProblemsPage';
 
 export const Dashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -182,6 +185,8 @@ export const Dashboard: React.FC = () => {
                                     </div>
                                     <div className="p-6">
                                         <div className="space-y-3">
+                                            <TodaysAssignments />
+                                            <UploadProblems />
                                             <button
                                                 onClick={() => setActiveTab('problems')}
                                                 className="w-full flex items-center gap-3 p-3 text-left bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
@@ -257,6 +262,12 @@ export const Dashboard: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'imported' && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden p-6">
+                        <ImportedProblemsPage />
                     </div>
                 )}
 
